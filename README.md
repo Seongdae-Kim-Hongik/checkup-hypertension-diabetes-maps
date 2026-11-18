@@ -4,7 +4,7 @@ Analysis code for the manuscript
 
 > Kim S. *Newly detected hypertension and diabetes at national health checkups follow different maps across South Korean districts.* Manuscript submitted.
 
-Archived version: Zenodo, https://doi.org/ZENODO_DOI_PLACEHOLDER.
+Archived version: Zenodo, https://doi.org/10.5281/zenodo.24355983.
 
 ## Contents
 
