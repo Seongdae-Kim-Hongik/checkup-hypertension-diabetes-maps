@@ -38,9 +38,11 @@ def _num(m):
         j = i
         while j + 1 < len(ns) and ns[j + 1] == ns[j] + 1: j += 1
         out.append(f"{ns[i]}–{ns[j]}" if j - i >= 2 else (f"{ns[i]},{ns[j]}" if j == i + 1 else f"{ns[i]}")); i = j + 1
-    return "(" + ",".join(out) + ")"
+    return "\x02" + ",".join(out) + "\x03"
 CITE = re.compile(r"\[(@[^\]]+)\]")
-def cite(t): return CITE.sub(_num, t)
+def cite(t):
+    t = CITE.sub(_num, t); t = re.sub(r"\s+(\x02[^\x03]*\x03)", r"\1", t)
+    return re.sub(r"(\x02[^\x03]*\x03)([.,;:])", r"\2\1", t)
 # ── AMA 참고문헌 ──
 KEEP = {"Korea", "Korean", "Koreans", "Norway", "US", "U.S.", "England", "China", "India", "Indians", "Bangladesh", "Russia", "Chicago's", "Chicago", "South", "Side", "NHS", "COVID-19", "KNHANES", "IDF", "Tromsø", "HELIUS",
         "ADDITION-Cambridge", "Bayesian", "Gaussian", "Laplace", "STROBE", "Study", "Global", "Burden", "Disease", "United", "States", "National", "Health", "Nutrition", "Examination", "Survey", "Surveys",
@@ -72,6 +74,7 @@ def ama(r, key=None):
     doi = f" doi:{r['doi']}" if r.get("doi") else ""
     return f"{a}. {t}. {r['journal']}. {loc}.{doi}"
 
+TFIX["dwyerlindgren2016diagnosed"] = "Diagnosed and undiagnosed diabetes prevalence by county in the U.S., 1999-2012"
 REFS["web:kosis2026screening"] = dict(REFS["web:kosis2026screening"], title="National health screening statistics: general health screening results by district and sex (DT_35007_N098, DT_35007_N103), by sex and age group (DT_35007_N099, DT_35007_N104), and distributions of systolic and diastolic blood pressure and fasting glucose by province and age group (DT_35007_N060 to N063, N068, N069), 2011-2024. Korean Statistical Information Service", accessed="November 19, 2026")
 
 D = Document(); st = D.styles["Normal"]; st.font.name = "Times New Roman"; st.font.size = Pt(12)
@@ -92,8 +95,12 @@ def para(text, bold_lead=None, align=None, italic=False, size=None):
     p = D.add_paragraph()
     if align is not None: p.alignment = align
     if bold_lead: rr = p.add_run(bold_lead); rr.bold = True
-    for part in re.split(r"(\*[^*]+\*)", text):
+    for part in re.split(r"(\*[^*]+\*|\x02[^\x03]*\x03)", text):
         if not part: continue
+        if part.startswith("\x02"):
+            rr = p.add_run(part[1:-1]); rr.font.superscript = True
+            if size: rr.font.size = Pt(size)
+            continue
         it = part.startswith("*") and part.endswith("*")
         rr = p.add_run(part[1:-1] if it else part); rr.italic = italic or it
         if size: rr.font.size = Pt(size)
@@ -150,18 +157,18 @@ for i, k in enumerate(ORDER, 1):
     p = para(f"{i}. " + ama(REFS[k], k)); p.paragraph_format.left_indent = Inches(0.3); p.paragraph_format.first_line_indent = Inches(-0.3)
 # ── 표 ──
 TABLES = [
- ("Table 1. Examinations and suspected hypertension or diabetes among examinees not under treatment, National General Health Screening, 228 districts of South Korea, selected years 2011–2024", "Table1.csv",
+ ("Table 1. Examinees and those not under treatment with suspected hypertension or diabetes, National General Health Screening, 228 districts of South Korea, 2011, 2017, 2018, and 2024", "Table1.csv",
   ["a Each examinee with suspected hypertension or diabetes is counted once; an examinee with both conditions is counted in each condition column.",
-   "b Proportion of examinees with suspected hypertension or diabetes in each district.", "c Share of residents with tertiary education from the population census, interpolated between census years and carried forward after 2020."]),
+   "b Proportion of examinees with suspected hypertension or diabetes in each district. Percentages in the count columns use all examinees with a screening judgment as denominator; counts are sums over 228 districts and differ from the national measurement totals in Supplementary Table S1.", "c Share of residents with tertiary education from the population census, interpolated between census years and carried forward after 2020."]),
  ("Table 2. Rate ratios per 1 standard deviation of 12 district characteristics for suspected hypertension or diabetes in 200,907,394 examinations, National General Health Screening, 228 districts of South Korea, 2011–2024", "Table2.csv",
   ["a Expected direction, set before covariate models were fitted: − fewer suspected cases, + more suspected cases.",
    "b Bayesian negative binomial model with BYM2 spatial effect, random walk and independent year effects, the 12 characteristics, and 5 forced controls (urban population share, physicians, sex ratio, fiscal autonomy, and share aged 80 years or older); values are rate ratio (95% credible interval), judged on unrounded limits.",
    "c Percentage of models in which the 95% credible interval excluded 1, among the 200 models with random subsets of 6 characteristics that included the characteristic (86–113 models each).", "d Knorr-Held type IV space–time interaction model allowing district-specific trends.",
    "e Same model fitted to suspected hypertension or suspected diabetes alone."])]
 HDRFIX = {"District proportion, median (IQR), %": "District proportion, median (interquartile range), %", "Tertiary education, median (IQR), %": "Tertiary education, median (interquartile range), %",
-          "Specs, %": "Covariate subsets credible, %", "Characteristic (per 1 SD)": "Characteristic (per 1 standard deviation)"}
+          "Specs, %": "Subsets credible, %", "Characteristic (per 1 SD)": "Characteristic (per 1 standard deviation)"}
 SUPA = {"Table1.csv": {"Suspected hypertension or diabetes, n (%)": "a", "District proportion, median (interquartile range), %": "b", "Tertiary education, median (interquartile range), %": "c"},
-        "Table2.csv": {"Sign": "a", "Main model": "b", "Covariate subsets credible, %": "c", "Knorr-Held IV": "d", "Hypertension": "e", "Diabetes": "e"}}
+        "Table2.csv": {"Sign": "a", "Main model": "b", "Subsets credible, %": "c", "Knorr-Held IV": "d", "Hypertension": "e", "Diabetes": "e"}}
 def cellfmt(c, text, bold=False, sup=None):
     c.text = ""; p = c.paragraphs[0]; p.paragraph_format.line_spacing = 1.0; r = p.add_run(text); r.font.size = Pt(9); r.bold = bold
     if sup: s = p.add_run(sup); s.font.size = Pt(9); s.font.superscript = True; s.bold = bold
@@ -174,12 +181,18 @@ def three_line(T):
     tblPr.append(b)
     for c in T.rows[0].cells:
         tcPr = c._tc.get_or_add_tcPr(); bb = OxmlElement("w:tcBorders"); e = OxmlElement("w:bottom"); e.set(qn("w:val"), "single"); e.set(qn("w:sz"), "6"); e.set(qn("w:color"), "000000"); bb.append(e); tcPr.append(bb)
+from docx.enum.section import WD_SECTION
+def new_sec(landscape):
+    sc = D.add_section(WD_SECTION.NEW_PAGE); sc.orientation = WD_ORIENT.LANDSCAPE if landscape else WD_ORIENT.PORTRAIT
+    sc.page_width, sc.page_height = (Inches(11.69), Inches(8.27)) if landscape else (Inches(8.27), Inches(11.69)); return sc
 for title, f, notes in TABLES:
-    D.add_page_break(); para(title).runs[0].bold = True
-    rows = list(csv.reader(open(os.path.join(HERE, "tables", f), encoding="utf-8"))); rows[0] = [HDRFIX.get(v, v) for v in rows[0]]
+    if f == "Table2.csv": new_sec(True)
+    else: D.add_page_break()
+    para(title).runs[0].bold = True
+    rows = list(csv.reader(open(os.path.join(HERE, "tables", f), encoding="utf-8"))); rows[0] = [HDRFIX.get(v, v) for v in rows[0]]; rows = [[c.replace(" (log)", " (logarithm)") for c in r] for r in rows]
     T = D.add_table(rows=len(rows), cols=len(rows[0])); T.autofit = False
-    WID = {"Table1.csv": [0.5, 0.9, 1.05, 0.95, 0.9, 1.0, 0.97], "Table2.csv": [1.05, 0.38, 0.66, 0.55, 0.66, 0.66, 0.66, 0.66, 0.0]}[f]
-    if f == "Table2.csv": WID = [1.05, 0.36, 0.64, 0.56, 0.64, 0.64, 0.64, 0.64, 0.64]
+    WID = {"Table1.csv": [0.45, 0.85, 1.0, 1.0, 0.85, 1.0, 1.1], "Table2.csv": [1.05, 0.38, 0.66, 0.55, 0.66, 0.66, 0.66, 0.66, 0.0]}[f]
+    if f == "Table2.csv": WID = [1.45, 0.45, 1.19, 0.65, 1.19, 1.19, 1.19, 1.19, 1.19]
     for j, w in enumerate(WID):
         for c in T.columns[j].cells: c.width = Inches(w)
     for gc, w in zip(T._tbl.tblGrid.findall(qn("w:gridCol")), WID): gc.set(qn("w:w"), str(int(w * 1440)))
@@ -196,7 +209,7 @@ FIGS = [("Figure 1. Residual spatial rate ratios and spatial autocorrelation of 
         ("Figure 2. Rate ratios per 1 standard deviation for 12 district characteristics and for tertiary education across analyses, National General Health Screening, 228 districts of South Korea, 2011–2024.",
          "Main-model rate ratios with 95% credible intervals for 12 district characteristics (A) and the tertiary education rate ratio across alternative models, periods, components, and outcomes (B). Filled markers indicate intervals excluding 1.",
          "Two dot-and-whisker plots. Panel A shows that tertiary education has the lowest rate ratio, well below 1, and other characteristics lie close to 1. Panel B shows the tertiary education rate ratio between 0.93 and 0.97, below 1, in all 12 analyses shown.")]
-D.add_page_break(); head("Figure legends")
+new_sec(False); head("Figure legends")
 for t, cap, alt in FIGS:
     para(t).runs[0].bold = True; para(cap); para(alt, bold_lead="Alt text: ")
 fp = os.path.join(OUT, "Manuscript_FP.docx"); D.save(fp)
@@ -209,15 +222,28 @@ S = Document(); ss = S.styles["Normal"]; ss.font.name = "Times New Roman"; ss.fo
 S.core_properties.author = "Seongdae Kim"; S.core_properties.title = "Supplementary data"; S.core_properties.comments = ""
 p = S.add_paragraph(); r = p.add_run("Supplementary data"); r.bold = True
 p = S.add_paragraph(); r = p.add_run(TITLE); r.italic = True
-p = S.add_paragraph(); r = p.add_run("Supplementary Table S1. Classification of suspected hypertension and suspected diabetes compared with measured systolic blood pressure and fasting glucose among all examinees, National General Health Screening, South Korea, 2011–2024"); r.bold = True
-hdr = ["Year", "Examinees with blood pressure measured, n", "Systolic ≥140 mm Hg, %", "Suspected hypertension, n", "Suspected hypertension ÷ systolic ≥140 mm Hg", "Fasting glucose ≥126 mg/dL, %", "Suspected diabetes, n", "Suspected diabetes ÷ fasting glucose ≥126 mg/dL"]
-T = S.add_table(rows=1 + len(G), cols=len(hdr))
-for j, h in enumerate(hdr): cellfmt(T.cell(0, j), h, bold=True)
+p = S.add_paragraph(); r = p.add_run("Supplementary Table S1. Suspected hypertension and suspected diabetes among examinees not under treatment compared with measured blood pressure and fasting glucose among all examinees, National General Health Screening, South Korea, 2011–2024"); r.bold = True
+from decimal import Decimal, ROUND_HALF_UP
+pc = lambda a, b, nd="0.1": str(Decimal(str(100 * float(a) / float(b))).quantize(Decimal(nd), rounding=ROUND_HALF_UP))
+rt = lambda a, b: str(Decimal(str(float(a) / float(b))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+PV = {int(r["year"]): r for r in csv.DictReader(open(os.path.join(os.path.dirname(MS), "results_gate", "S0_judgement_province.csv"), encoding="utf-8"))}
+hdr = ["Year", "Blood pressure measured, n", "Systolic ≥140 mm Hg, %", "Diastolic ≥90 mm Hg, %", "Suspected hypertension, n", "Ratio to systolic ≥140 mm Hg", "Provincial median ratio", "Fasting glucose measured, n", "Fasting glucose ≥126 mg/dL, %", "Suspected diabetes, n", "Ratio to glucose ≥126 mg/dL"]
+sec_ = S.sections[0]; sec_.orientation = WD_ORIENT.LANDSCAPE; sec_.page_width, sec_.page_height = Inches(11.69), Inches(8.27)
+for a_ in ("left_margin", "right_margin"): setattr(sec_, a_, Inches(0.8))
+T = S.add_table(rows=1 + len(G), cols=len(hdr)); T.autofit = False
+WS = [0.45, 1.0, 0.75, 0.75, 1.0, 0.85, 0.85, 1.0, 0.85, 0.95, 0.85]
+for j_, w in enumerate(WS):
+    for c in T.columns[j_].cells: c.width = Inches(w)
+for gc, w in zip(T._tbl.tblGrid.findall(qn("w:gridCol")), WS): gc.set(qn("w:w"), str(int(w * 1440)))
+_l = OxmlElement("w:tblLayout"); _l.set(qn("w:type"), "fixed"); T._tbl.tblPr.append(_l)
+for j_, h in enumerate(hdr): cellfmt(T.cell(0, j_), h, bold=True)
 fmt = lambda x: f"{int(float(x)):,}"
-for i, g in enumerate(G, 1):
-    vals = [g["year"], fmt(g["bp_measured"]), f"{float(g['pct_sbp140']):.1f}", fmt(g["flag_htn"]), f"{float(g['ratio_htn_vs_sbp140']):.2f}", f"{float(g['pct_fbg126']):.1f}", fmt(g["flag_dm"]), f"{float(g['ratio_dm_vs_fbg126']):.2f}"]
-    for j, v in enumerate(vals): cellfmt(T.cell(i, j), v)
+for i_, g in enumerate(G, 1):
+    y = int(g["year"])
+    vals = [g["year"], fmt(g["bp_measured"]), pc(g["sbp140"], g["bp_measured"]), pc(g["dbp90"], g["bp_measured"]), fmt(g["flag_htn"]), rt(g["flag_htn"], g["sbp140"]),
+            f"{float(PV[y]['htn_ratio_median']):.2f}", fmt(g["fbg_measured"]), pc(g["fbg126"], g["fbg_measured"]), fmt(g["flag_dm"]), rt(g["flag_dm"], g["fbg126"])]
+    for j_, v in enumerate(vals): cellfmt(T.cell(i_, j_), v)
 three_line(T)
-p = S.add_paragraph("Measured distributions (Korean Statistical Information Service tables DT_35007_N063 and N069, national totals by age group) include examinees already under treatment, who are classified separately, so the ratios are below 1. The step in the hypertension ratio between 2017 and 2018, without a matching change in the share with systolic pressure ≥140 mm Hg, coincided with the 2018 revision of the screening program. Diastolic pressure ≥90 mm Hg (N061) did not change this pattern. At the province level (N062, N068), correlations between suspected and measured rates were 0.53–0.73 for hypertension and 0.80–0.96 for diabetes.")
+p = S.add_paragraph("Sources: Korean Statistical Information Service tables DT_35007_N061, N063, and N069 (national totals of all examinees with each measurement) and N103 (suspected cases, national total); provincial median ratio from N062 and N103 for 17 provinces. Measured distributions include examinees already under treatment, who are classified separately, and the joint distribution of systolic and diastolic pressure is not published, so the ratios are descriptive checks rather than sensitivity estimates. Measurement totals cover all examinees nationally and differ from the examinees with a screening judgment summed over 228 districts in Table 1. Pearson correlations between provincial suspected and measured rates were 0.53–0.73 for hypertension and 0.80–0.96 for diabetes. The step in the hypertension ratio between 2017 and 2018 coincided with the 2018 revision of the screening program.")
 for r in p.runs: r.font.size = Pt(9)
 sp = os.path.join(OUT, "Supplementary_Data_FP.docx"); S.save(sp); print("[supp]", sp)
